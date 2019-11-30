@@ -45,9 +45,9 @@ func TestRunRoot(t *testing.T) {
 
 			output, err := runRoot(test.input)
 			if test.error {
-				assert.NoError(err)
-			} else {
 				assert.Error(err)
+			} else {
+				assert.NoError(err)
 			}
 			assert.Equal(test.output, string(output))
 		})
@@ -87,7 +87,8 @@ func TestParseArgs(t *testing.T) {
 			assert := a.New(t)
 			setup(assert)
 
-			verbose, clearCache, output := parseArgs(test.input)
+			verbose, clearCache, output, err := parseArgs(test.input)
+			assert.NoError(err)
 			assert.Equal(test.verbose, verbose)
 			assert.Equal(test.clearCache, clearCache)
 			assert.Equal(test.output, output)
