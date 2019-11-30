@@ -24,8 +24,6 @@ the same command will return the stored result. cache will only store the
 results of successful commands: if your bash command has a non-zero exit
 code, then it will be uncached.
 
-cache reduces the latency of most commands to ~0.02s.
-
 Usage:
   cache [flags] [command]
 
