@@ -12,6 +12,31 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var usage = `cache: A Cache for slow shell commands.
+
+Querying log clusters or curling API endpoints can have a latency that can
+make it annoying to build up a pipe pipeline iteratively. This tool caches
+those results for you so you iterate quickly.
+
+cache runs the command for you and stores the result, and then returns the
+output to you. Any data stored has a TTL of 1 hour, and subsequent calls of
+the same command will return the stored result. cache will only store the
+results of successful commands: if your bash command has a non-zero exit
+code, then it will be uncached.
+
+cache reduces the latency of most commands to ~0.02s.
+
+Usage:
+  cache [flags] [command]
+
+Flags:
+      --clear, --clean   Clear the cache.
+  -v, --verbose          Verbose logging.
+
+Examples
+
+  cache curl -X GET example.com
+`
 var (
 	badgerOptions = badger.DefaultOptions("/tmp/cache-database")
 )
@@ -24,7 +49,8 @@ func main() {
 	output, err := runRoot(os.Args)
 	fmt.Printf("%s", output)
 	if err != nil {
-		fmt.Fprint(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
+		fmt.Fprint(os.Stderr, usage)
 		os.Exit(1)
 	}
 }
@@ -33,9 +59,9 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string) 
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
-		case "--clean":
+		case "--clean", "--clear":
 			clearCache = true
-		case "--verbose":
+		case "--verbose", "-v":
 			verbose = true
 		default:
 			return verbose, clearCache, args[i:]
@@ -46,11 +72,6 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string) 
 }
 
 func runRoot(args []string) ([]byte, error) {
-	fmt.Printf("%#v\n", args)
-	if len(args) <= 1 {
-		return nil, errors.New("No arguments provided")
-	}
-
 	verbose, clearCache, command := parseArgs(args)
 	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
@@ -58,8 +79,11 @@ func runRoot(args []string) ([]byte, error) {
 		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
+	if len(command) <= 1 && !clearCache {
+		return nil, errors.New("No arguments provided")
+	}
+
 	logrus.Infof("Command: %s", command)
-	fmt.Printf("%#v %#v %#v\n", command, verbose, clearCache)
 	db, err := badger.Open(badgerOptions)
 	if err != nil {
 		logrus.WithError(err).Errorf("failed to open database, not caching execution")
@@ -77,11 +101,11 @@ func runRoot(args []string) ([]byte, error) {
 }
 
 func nukeDatabase(db *badger.DB) error {
-	if db == nil {
+	if db != nil {
+		return db.DropAll()
+	} else {
 		logrus.Info("No database connection, trying to delete directory.")
 		return os.RemoveAll(badgerOptions.Dir)
-	} else {
-		return db.DropAll()
 	}
 }
 
@@ -115,8 +139,11 @@ func runCommand(db *badger.DB, command []string) ([]byte, error) {
 }
 
 func fetch(db *badger.DB, key []string) ([]byte, error) {
-	var joinedKey = []byte(strings.Join(key, " ")) // TODO: test this
-	var output []byte
+	var (
+		joinedKey = []byte(strings.Join(key, " "))
+		output []byte
+	)
+
 	err := db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(joinedKey)
 		if err != nil {
@@ -139,7 +166,7 @@ func executeCommand(command []string) ([]byte, error) {
 }
 
 func persist(db *badger.DB, key []string, value []byte) {
-	var joinedKey = []byte(strings.Join(key, " ")) // TODO: test this
+	var joinedKey = []byte(strings.Join(key, " "))
 	err := db.Update(func(txn *badger.Txn) error {
 		entry := badger.NewEntry(joinedKey, value).WithTTL(time.Hour)
 		return txn.SetEntry(entry)
