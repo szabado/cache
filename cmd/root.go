@@ -42,16 +42,17 @@ var RootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		err := runRoot(args)
+		output, err := runRoot(args)
+		_, _ = os.Stdout.Write(output)
+
 		if err != nil {
 			os.Exit(1)
 		}
 	},
 }
 
-func runRoot(args []string) error {
-	var rawCommand = strings.Join(args, " ")
-	var rawCommandBytes = []byte(rawCommand)
+func runRoot(args []string) ([]byte, error) {
+	var command = strings.Join(args, " ")
 
 	db, err := badger.Open(badgerOptions)
 	if err != nil {
@@ -61,57 +62,76 @@ func runRoot(args []string) error {
 
 	if clearCache {
 		if db == nil {
-			return errors.New("could not open database to clear it")
+			return nil, errors.New("could not open database to clear it")
 		}
-		return db.DropAll()
+		return nil, db.DropAll()
 	}
 
+	return runCommand(db, command)
+}
+
+func runCommand(db *badger.DB, command string) ([]byte, error) {
+	var (
+		output []byte
+		err error
+	)
+
 	if db != nil {
-		err = printPreviousExecution(db, rawCommandBytes)
+		output, err = fetch(db, command)
 
 		if err != nil && err != badger.ErrKeyNotFound {
 			logrus.WithError(err).Errorf("Unknown error trying to find previous execution, not caching execution")
 		} else if err == nil {
 			logrus.Debug("Found previous execution, exiting early")
-			return nil
+			return output, nil
 		}
 	}
 
-	logrus.Debugf("Failed to find previous execution, executing command: %s", rawCommand)
-	cmd := exec.Command("bash", "-c", rawCommand)
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
+	logrus.Debugf("Failed to find previous execution, executing command")
+	output, err = executeCommand(command)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	os.Stdout.Write(output)
 
 	if db != nil {
-		err = db.Update(func(txn *badger.Txn) error {
-			entry := badger.NewEntry(rawCommandBytes, output).WithTTL(time.Hour)
-			return txn.SetEntry(entry)
-		})
-
-		if err != nil {
-			logrus.WithError(err).Errorf("Failed to store the command result")
-		}
+		persist(db, command, output)
 	}
-	return nil
+	return output, nil
 }
 
-func printPreviousExecution(db *badger.DB, command []byte) error {
-	return db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(command)
+func fetch(db *badger.DB, key string) ([]byte, error) {
+	var output []byte
+	err := db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(key))
 		if err != nil {
 			return err
 		}
 
-		return item.Value(func(val []byte) error {
-			_, err := os.Stdout.Write(val)
-			return err
-		})
+		output, err = item.ValueCopy(nil)
+		return err
 	})
 
+	return output, err
+}
+
+func executeCommand(command string) ([]byte, error) {
+	logrus.Info("Executing command %s", command)
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	return cmd.Output()
+}
+
+func persist(db *badger.DB, key string, value []byte) {
+	err := db.Update(func(txn *badger.Txn) error {
+		entry := badger.NewEntry([]byte(key), value).WithTTL(time.Hour)
+		return txn.SetEntry(entry)
+	})
+
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{
+			"key": key,
+			"value": value,
+		}).Warn("Failed to persist data")
+	}
 }
