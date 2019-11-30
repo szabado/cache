@@ -53,7 +53,7 @@ func main() {
 	}
 }
 
-func parseArgs(args []string) (verbose bool, clearCache bool, command []string) {
+func parseArgs(args []string) (verbose bool, clearCache bool, command []string, err error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -62,15 +62,21 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string) 
 		case "--verbose", "-v":
 			verbose = true
 		default:
-			return verbose, clearCache, args[i:]
+			if strings.HasPrefix(arg, "-") {
+				return false, false, nil, errors.Errorf("unknown flag: %s", arg)
+			}
+			return verbose, clearCache, args[i:], nil
 		}
 	}
 
-	return verbose, clearCache, nil
+	return verbose, clearCache, nil, nil
 }
 
 func runRoot(args []string) ([]byte, error) {
-	verbose, clearCache, command := parseArgs(args)
+	verbose, clearCache, command, err := parseArgs(args)
+	if err != nil {
+		return nil, err
+	}
 	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
