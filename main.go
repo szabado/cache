@@ -116,7 +116,7 @@ func nukeDatabase(db *badger.DB) error {
 func runCommand(db *badger.DB, command []string) ([]byte, error) {
 	var (
 		output []byte
-		err error
+		err    error
 	)
 
 	if db != nil {
@@ -145,7 +145,7 @@ func runCommand(db *badger.DB, command []string) ([]byte, error) {
 func fetch(db *badger.DB, key []string) ([]byte, error) {
 	var (
 		joinedKey = []byte(strings.Join(key, " "))
-		output []byte
+		output    []byte
 	)
 
 	err := db.View(func(txn *badger.Txn) error {
@@ -178,7 +178,7 @@ func persist(db *badger.DB, key []string, value []byte) {
 
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{
-			"key": key,
+			"key":   key,
 			"value": value,
 		}).Warn("Failed to persist data")
 	}

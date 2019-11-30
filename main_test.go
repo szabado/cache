@@ -19,17 +19,17 @@ func setup(assert *a.Assertions) {
 }
 
 func TestRunRoot(t *testing.T) {
-	testCases := []struct{
-		input []string
+	testCases := []struct {
+		input  []string
 		output string
-		error bool
+		error  bool
 	}{
 		{
-			input: []string{"cache", "echo", `-e`, `test\t`},
+			input:  []string{"cache", "echo", `-e`, `test\t`},
 			output: "test\t\n",
 		},
 		{
-			input: []string{"cache", "--clean"},
+			input:  []string{"cache", "--clean"},
 			output: "",
 		},
 		{
@@ -55,31 +55,30 @@ func TestRunRoot(t *testing.T) {
 }
 
 func TestParseArgs(t *testing.T) {
-	testCases := []struct{
-		input []string
-		verbose bool
+	testCases := []struct {
+		input      []string
+		verbose    bool
 		clearCache bool
-		output []string
+		output     []string
 	}{
 		{
-			input: []string{"cache", "echo", `-e`, `test\t`},
-			verbose: false,
+			input:      []string{"cache", "echo", `-e`, `test\t`},
+			verbose:    false,
 			clearCache: false,
-			output: []string{"echo", "-e", "test\\t"},
+			output:     []string{"echo", "-e", "test\\t"},
 		},
 		{
-			input: []string{"cache", "--clean"},
-			verbose: false,
+			input:      []string{"cache", "--clean"},
+			verbose:    false,
 			clearCache: true,
-			output: nil,
+			output:     nil,
 		},
 		{
-			input: []string{"cache", "--verbose"},
-			verbose: true,
+			input:      []string{"cache", "--verbose"},
+			verbose:    true,
 			clearCache: false,
-			output: nil,
+			output:     nil,
 		},
-
 	}
 
 	for i, test := range testCases {
