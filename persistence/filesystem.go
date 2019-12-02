@@ -3,12 +3,10 @@ package persistence
 import (
 	"crypto/sha1"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/dgraph-io/badger"
 )
@@ -34,10 +32,7 @@ func (p *fsPersister) ReadInto(key []byte, target io.Writer) error {
 		return badger.ErrKeyNotFound
 	}
 
-	start := time.Now().UnixNano()
 	bytes, err := ioutil.ReadFile(path)
-	end := time.Now().UnixNano()
-	fmt.Printf("Reading: %d\n", end-start)
 
 	target.Write(bytes)
 	return err
