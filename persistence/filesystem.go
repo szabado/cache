@@ -16,6 +16,7 @@ const directory = "/tmp/cache-fsdb"
 var _ Persister = (*fsPersister)(nil)
 
 type fsPersister struct {
+	// TODO: Add TTL
 }
 
 func getFilepath(key []byte) string {
