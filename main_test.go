@@ -36,6 +36,10 @@ func TestRunRoot(t *testing.T) {
 			input: []string{"cache", "--verbose"},
 			error: true,
 		},
+		{
+			input:  []string{"cache", "echo"},
+			output: "\n",
+		},
 	}
 
 	for i, test := range testCases {
@@ -90,6 +94,28 @@ func TestParseArgs(t *testing.T) {
 			assert.NoError(err)
 			assert.Equal(test.verbose, verbose)
 			assert.Equal(test.clearCache, clearCache)
+			assert.Equal(test.output, output)
+		})
+	}
+}
+
+func TestEscape(t *testing.T) {
+	testCases := []struct {
+		input  []string
+		output string
+	}{
+		{
+			input:  []string{"a", "b"},
+			output: "a b ",
+		},
+	}
+
+	for i, test := range testCases {
+		t.Run(fmt.Sprint(i, test.input), func(t *testing.T) {
+			assert := a.New(t)
+			setup(assert)
+
+			output := escape(test.input)
 			assert.Equal(test.output, output)
 		})
 	}

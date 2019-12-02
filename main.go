@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alessio/shellescape"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -83,11 +84,11 @@ func runRoot(args []string) ([]byte, error) {
 		logrus.SetLevel(logrus.ErrorLevel)
 	}
 
-	if len(command) <= 1 && !clearCache {
+	if len(command) == 0 && !clearCache {
 		return nil, errors.New("No arguments provided")
 	}
 
-	logrus.Infof("Command: %s", command)
+	logrus.Infof("Command: %s (%#[1]v)", command)
 	db, err := badger.Open(badgerOptions)
 	if err != nil {
 		logrus.WithError(err).Errorf("failed to open database, not caching execution")
@@ -162,11 +163,21 @@ func fetch(db *badger.DB, key []string) ([]byte, error) {
 }
 
 func executeCommand(command []string) ([]byte, error) {
-	logrus.Infof("Executing command: %s", command)
-	cmd := exec.Command(command[0], command[1:]...)
+	logrus.Infof("Executing command: %s (%#[1]v)", command)
+	cmd := exec.Command("bash", "-c", escape(command))
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
+}
+
+func escape(cmdSegments []string) string {
+	var builder strings.Builder
+	for _, seg := range cmdSegments {
+		builder.WriteString(shellescape.Quote(seg))
+		builder.WriteByte(' ')
+	}
+
+	return builder.String()
 }
 
 func persist(db *badger.DB, key []string, value []byte) {
