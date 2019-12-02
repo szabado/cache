@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -45,8 +46,8 @@ func init() {
 }
 
 func main() {
-	output, err := runRoot(os.Args)
-	fmt.Printf("%s", output)
+	err := runRoot(os.Args, os.Stdout)
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
 		fmt.Fprint(os.Stderr, usage)
@@ -73,10 +74,10 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string, 
 	return verbose, clearCache, nil, nil
 }
 
-func runRoot(args []string) ([]byte, error) {
+func runRoot(args []string, output io.Writer) error {
 	verbose, clearCache, command, err := parseArgs(args)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
@@ -85,7 +86,7 @@ func runRoot(args []string) ([]byte, error) {
 	}
 
 	if len(command) == 0 && !clearCache {
-		return nil, errors.New("No arguments provided")
+		return errors.New("No arguments provided")
 	}
 
 	logrus.Infof("Command: %s (%#[1]v)", command)
@@ -99,10 +100,10 @@ func runRoot(args []string) ([]byte, error) {
 
 	if clearCache {
 		logrus.Info("Deleting database")
-		return nil, nukeDatabase(db)
+		return nukeDatabase(db)
 	}
 
-	return runCommand(db, command)
+	return runCommand(db, command, output)
 }
 
 func nukeDatabase(db *badger.DB) error {
@@ -114,40 +115,38 @@ func nukeDatabase(db *badger.DB) error {
 	}
 }
 
-func runCommand(db *badger.DB, command []string) ([]byte, error) {
+func runCommand(db *badger.DB, command []string, output io.Writer) error {
 	var (
-		output []byte
-		err    error
+		cmdOutput []byte
+		err       error
 	)
 
 	if db != nil {
-		output, err = fetch(db, command)
+		err = fetch(db, command, output)
 
 		if err != nil && err != badger.ErrKeyNotFound {
 			logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
 		} else if err == nil {
 			logrus.Debug("Found previous execution, exiting early")
-			return output, nil
+			return nil
 		}
 	}
 
 	logrus.Debugf("Failed to find previous execution, executing command")
-	output, err = executeCommand(command)
+	cmdOutput, err = executeCommand(command)
+	output.Write(cmdOutput)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if db != nil {
-		persist(db, command, output)
+		persist(db, command, cmdOutput)
 	}
-	return output, nil
+	return nil
 }
 
-func fetch(db *badger.DB, key []string) ([]byte, error) {
-	var (
-		joinedKey = []byte(strings.Join(key, " "))
-		output    []byte
-	)
+func fetch(db *badger.DB, key []string, output io.Writer) error {
+	joinedKey := []byte(strings.Join(key, " "))
 
 	err := db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(joinedKey)
@@ -155,11 +154,14 @@ func fetch(db *badger.DB, key []string) ([]byte, error) {
 			return err
 		}
 
-		output, err = item.ValueCopy(nil)
+		item.Value(func(val []byte) error {
+			_, err := output.Write(val)
+			return err
+		})
 		return err
 	})
 
-	return output, err
+	return err
 }
 
 func executeCommand(command []string) ([]byte, error) {

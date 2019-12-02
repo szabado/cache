@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -47,13 +48,14 @@ func TestRunRoot(t *testing.T) {
 			assert := a.New(t)
 			setup(assert)
 
-			output, err := runRoot(test.input)
+			var buf bytes.Buffer
+			err := runRoot(test.input, &buf)
 			if test.error {
 				assert.Error(err)
 			} else {
 				assert.NoError(err)
 			}
-			assert.Equal(test.output, string(output))
+			assert.Equal(test.output, buf.String())
 		})
 	}
 }
