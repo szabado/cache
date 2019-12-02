@@ -6,12 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/alessio/shellescape"
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"github.com/szabado/cache/persistence"
 )
 
 var usage = `cache: A Cache for slow shell commands.
@@ -37,13 +38,6 @@ Examples
 
   cache curl -X GET example.com
 `
-var (
-	badgerOptions = badger.DefaultOptions("/tmp/cache-database")
-)
-
-func init() {
-	badgerOptions.Logger = logrus.StandardLogger()
-}
 
 func main() {
 	err := runRoot(os.Args, os.Stdout)
@@ -90,39 +84,30 @@ func runRoot(args []string, output io.Writer) error {
 	}
 
 	logrus.Infof("Command: %s (%#[1]v)", command)
-	db, err := badger.Open(badgerOptions)
-	if err != nil {
+	persister := persistence.NewFsPersister()
+	if persister == nil {
 		logrus.WithError(err).Errorf("failed to open database, not caching execution")
-		db = nil
 	} else {
-		defer db.Close()
+		defer persister.Close()
 	}
 
 	if clearCache {
 		logrus.Info("Deleting database")
-		return nukeDatabase(db)
+		return persister.Wipe()
 	}
 
-	return runCommand(db, command, output)
+	return runCommand(persister, command, output)
 }
 
-func nukeDatabase(db *badger.DB) error {
-	if db != nil {
-		return db.DropAll()
-	} else {
-		logrus.Info("No database connection, trying to delete directory.")
-		return os.RemoveAll(badgerOptions.Dir)
-	}
-}
-
-func runCommand(db *badger.DB, command []string, output io.Writer) error {
+func runCommand(persister persistence.Persister, command []string, output io.Writer) error {
 	var (
-		cmdOutput []byte
-		err       error
+		commandKey []byte = []byte(strings.Join(command, " "))
+		cmdOutput  []byte
+		err        error
 	)
 
-	if db != nil {
-		err = fetch(db, command, output)
+	if persister != nil {
+		err = persister.ReadInto(commandKey, output)
 
 		if err != nil && err != badger.ErrKeyNotFound {
 			logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
@@ -139,29 +124,14 @@ func runCommand(db *badger.DB, command []string, output io.Writer) error {
 		return err
 	}
 
-	if db != nil {
-		persist(db, command, cmdOutput)
+	if persister != nil {
+		logrus.Debugf("Persisting command output")
+		err := persister.Persist(commandKey, cmdOutput)
+		if err != nil {
+			logrus.WithError(err).Warn("Failed to persist output")
+		}
 	}
 	return nil
-}
-
-func fetch(db *badger.DB, key []string, output io.Writer) error {
-	joinedKey := []byte(strings.Join(key, " "))
-
-	err := db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(joinedKey)
-		if err != nil {
-			return err
-		}
-
-		item.Value(func(val []byte) error {
-			_, err := output.Write(val)
-			return err
-		})
-		return err
-	})
-
-	return err
 }
 
 func executeCommand(command []string) ([]byte, error) {
@@ -180,19 +150,4 @@ func escape(cmdSegments []string) string {
 	}
 
 	return builder.String()
-}
-
-func persist(db *badger.DB, key []string, value []byte) {
-	var joinedKey = []byte(strings.Join(key, " "))
-	err := db.Update(func(txn *badger.Txn) error {
-		entry := badger.NewEntry(joinedKey, value).WithTTL(time.Hour)
-		return txn.SetEntry(entry)
-	})
-
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"key":   key,
-			"value": value,
-		}).Warn("Failed to persist data")
-	}
 }

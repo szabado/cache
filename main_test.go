@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dgraph-io/badger"
 	"github.com/sirupsen/logrus"
 	a "github.com/stretchr/testify/assert"
+
+	"github.com/szabado/cache/persistence"
 )
 
 func init() {
@@ -15,8 +16,8 @@ func init() {
 }
 
 func setup(assert *a.Assertions) {
-	db, _ := badger.Open(badgerOptions)
-	assert.NoError(nukeDatabase(db))
+	//assert.NoError(persistence.NewBadgerDbPersister().Wipe())
+	assert.NoError(persistence.NewFsPersister().Wipe())
 }
 
 func TestRunRoot(t *testing.T) {
