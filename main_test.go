@@ -16,7 +16,6 @@ func init() {
 }
 
 func setup(assert *a.Assertions) {
-	//assert.NoError(persistence.NewBadgerDbPersister().Wipe())
 	assert.NoError(persistence.NewFsPersister().Wipe())
 }
 
@@ -27,7 +26,7 @@ func TestRunRoot(t *testing.T) {
 		error  bool
 	}{
 		{
-			input:  []string{"cache", "echo", `-e`, `test\t`},
+			input:  []string{"cache", "--verbose", "echo", `-e`, `test\t`},
 			output: "test\t\n",
 		},
 		{
