@@ -5,18 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	a "github.com/stretchr/testify/assert"
 
 	"github.com/szabado/cache/persistence"
 )
 
-func init() {
-	logrus.SetLevel(logrus.DebugLevel)
-}
-
 func setup(assert *a.Assertions) {
-	//assert.NoError(persistence.NewBadgerDbPersister().Wipe())
 	assert.NoError(persistence.NewFsPersister().Wipe())
 }
 
@@ -27,7 +21,7 @@ func TestRunRoot(t *testing.T) {
 		error  bool
 	}{
 		{
-			input:  []string{"cache", "echo", `-e`, `test\t`},
+			input:  []string{"cache", "--verbose", "echo", `-e`, `test\t`},
 			output: "test\t\n",
 		},
 		{
@@ -57,6 +51,12 @@ func TestRunRoot(t *testing.T) {
 				assert.NoError(err)
 			}
 			assert.Equal(test.output, buf.String())
+
+			buf.Reset()
+			_, _, cmd, err := parseArgs(test.input)
+			assert.NoError(err)
+			persistence.NewFsPersister().ReadInto(cmd, &buf)
+			assert.Equal(test.output, buf.String())
 		})
 	}
 }
@@ -66,25 +66,25 @@ func TestParseArgs(t *testing.T) {
 		input      []string
 		verbose    bool
 		clearCache bool
-		output     []string
+		output     string
 	}{
 		{
 			input:      []string{"cache", "echo", `-e`, `test\t`},
 			verbose:    false,
 			clearCache: false,
-			output:     []string{"echo", "-e", "test\\t"},
+			output:     "echo -e 'test\\t' ",
 		},
 		{
 			input:      []string{"cache", "--clean"},
 			verbose:    false,
 			clearCache: true,
-			output:     nil,
+			output:     "",
 		},
 		{
 			input:      []string{"cache", "--verbose"},
 			verbose:    true,
 			clearCache: false,
-			output:     nil,
+			output:     "",
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestEscape(t *testing.T) {
 			assert := a.New(t)
 			setup(assert)
 
-			output := escape(test.input)
+			output := escapeAndJoin(test.input)
 			assert.Equal(test.output, output)
 		})
 	}

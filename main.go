@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/alessio/shellescape"
-	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -31,7 +30,8 @@ Usage:
   cache [flags] [command]
 
 Flags:
-      --clear, --clean   Clear the cache.
+  -c, --clear, --clean   Clear the cache.
+  -o, --overwrite        Overwrite any cache entry for this command.
   -v, --verbose          Verbose logging.
 
 Examples
@@ -43,13 +43,22 @@ func main() {
 	err := runRoot(os.Args, os.Stdout)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
-		fmt.Fprint(os.Stderr, usage)
+		switch tErr := err.(type) {
+		case *exec.ExitError:
+			os.Exit(tErr.ExitCode())
+		case *UsageError:
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			fmt.Fprint(os.Stderr, usage)
+			os.Exit(1)
+		default:
+			fmt.Fprint(os.Stderr, "\n")
+			logrus.Errorf("Error: %s\n", err)
+		}
 		os.Exit(1)
 	}
 }
 
-func parseArgs(args []string) (verbose bool, clearCache bool, command []string, err error) {
+func parseArgs(args []string) (verbose bool, clearCache bool, override bool, command string, err error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -57,22 +66,25 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string, 
 			clearCache = true
 		case "--verbose", "-v":
 			verbose = true
+		case "--override", "-o":
+			override = true
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return false, false, nil, errors.Errorf("unknown flag: %s", arg)
+				return false, false, false,"", errors.Errorf("unknown flag: %s", arg)
 			}
-			return verbose, clearCache, args[i:], nil
+			return verbose, clearCache, override, escapeAndJoin(args[i:]), nil
 		}
 	}
 
-	return verbose, clearCache, nil, nil
+	return verbose, clearCache, override, "", nil
 }
 
 func runRoot(args []string, output io.Writer) error {
-	verbose, clearCache, command, err := parseArgs(args)
+	verbose, clearCache, override, command, err := parseArgs(args)
 	if err != nil {
-		return err
+		return NewUsageError(err)
 	}
+
 	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
@@ -80,36 +92,24 @@ func runRoot(args []string, output io.Writer) error {
 	}
 
 	if len(command) == 0 && !clearCache {
-		return errors.New("No arguments provided")
+		return NewUsageError(errors.New("No arguments provided"))
 	}
 
-	logrus.Infof("Command: %s (%#[1]v)", command)
+	logrus.Infof("Command: %s", command)
 	persister := persistence.NewFsPersister()
-	if persister == nil {
-		logrus.WithError(err).Errorf("failed to open database, not caching execution")
-	} else {
-		defer persister.Close()
-	}
 
 	if clearCache {
 		logrus.Info("Deleting database")
 		return persister.Wipe()
 	}
 
-	return runCommand(persister, command, output)
+	return runCommand(persister, command, output, override)
 }
 
-func runCommand(persister persistence.Persister, command []string, output io.Writer) error {
-	var (
-		commandKey []byte = []byte(strings.Join(command, " "))
-		cmdOutput  []byte
-		err        error
-	)
-
-	if persister != nil {
-		err = persister.ReadInto(commandKey, output)
-
-		if err != nil && err != badger.ErrKeyNotFound {
+func runCommand(persister *persistence.FsPersister, command string, output io.Writer, override bool) error {
+	if !override {
+		err := persister.ReadInto(command, output)
+		if err != nil && err != persistence.ErrKeyNotFound {
 			logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
 		} else if err == nil {
 			logrus.Debug("Found previous execution, exiting early")
@@ -117,32 +117,29 @@ func runCommand(persister persistence.Persister, command []string, output io.Wri
 		}
 	}
 
-	logrus.Debugf("Failed to find previous execution, executing command")
-	cmdOutput, err = executeCommand(command)
-	output.Write(cmdOutput)
+	record, err := persister.GetWriterForKey(command)
 	if err != nil {
-		return err
+		logrus.WithError(err).Warn("Failed to open record for writing")
+	} else {
+		output = io.MultiWriter(output, record)
+		defer record.Close()
 	}
 
-	if persister != nil {
-		logrus.Debugf("Persisting command output")
-		err := persister.Persist(commandKey, cmdOutput)
-		if err != nil {
-			logrus.WithError(err).Warn("Failed to persist output")
-		}
-	}
-	return nil
+	logrus.Debugf("Failed to find previous execution, executing command")
+	return errors.Wrapf(executeCommand(command, output), "error running command")
 }
 
-func executeCommand(command []string) ([]byte, error) {
-	logrus.Infof("Executing command: %s (%#[1]v)", command)
-	cmd := exec.Command("bash", "-c", escape(command))
+func executeCommand(command string, target io.Writer) error {
+	logrus.Infof("Executing command: %s", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
-	return cmd.Output()
+	cmd.Stdout = target
+
+	return cmd.Run()
 }
 
-func escape(cmdSegments []string) string {
+func escapeAndJoin(cmdSegments []string) string {
 	var builder strings.Builder
 	for _, seg := range cmdSegments {
 		builder.WriteString(shellescape.Quote(seg))
