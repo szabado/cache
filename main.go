@@ -30,7 +30,8 @@ Usage:
   cache [flags] [command]
 
 Flags:
-      --clear, --clean   Clear the cache.
+  -c, --clear, --clean   Clear the cache.
+  -o, --overwrite        Overwrite any cache entry for this command.
   -v, --verbose          Verbose logging.
 
 Examples
@@ -57,7 +58,7 @@ func main() {
 	}
 }
 
-func parseArgs(args []string) (verbose bool, clearCache bool, command string, err error) {
+func parseArgs(args []string) (verbose bool, clearCache bool, override bool, command string, err error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -65,19 +66,21 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command string, er
 			clearCache = true
 		case "--verbose", "-v":
 			verbose = true
+		case "--override", "-o":
+			override = true
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return false, false, "", errors.Errorf("unknown flag: %s", arg)
+				return false, false, false,"", errors.Errorf("unknown flag: %s", arg)
 			}
-			return verbose, clearCache, escapeAndJoin(args[i:]), nil
+			return verbose, clearCache, override, escapeAndJoin(args[i:]), nil
 		}
 	}
 
-	return verbose, clearCache, "", nil
+	return verbose, clearCache, override, "", nil
 }
 
 func runRoot(args []string, output io.Writer) error {
-	verbose, clearCache, command, err := parseArgs(args)
+	verbose, clearCache, override, command, err := parseArgs(args)
 	if err != nil {
 		return NewUsageError(err)
 	}
@@ -100,16 +103,18 @@ func runRoot(args []string, output io.Writer) error {
 		return persister.Wipe()
 	}
 
-	return runCommand(persister, command, output)
+	return runCommand(persister, command, output, override)
 }
 
-func runCommand(persister *persistence.FsPersister, command string, output io.Writer) error {
-	err := persister.ReadInto(command, output)
-	if err != nil && err != persistence.ErrKeyNotFound {
-		logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
-	} else if err == nil {
-		logrus.Debug("Found previous execution, exiting early")
-		return nil
+func runCommand(persister *persistence.FsPersister, command string, output io.Writer, override bool) error {
+	if !override {
+		err := persister.ReadInto(command, output)
+		if err != nil && err != persistence.ErrKeyNotFound {
+			logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
+		} else if err == nil {
+			logrus.Debug("Found previous execution, exiting early")
+			return nil
+		}
 	}
 
 	record, err := persister.GetWriterForKey(command)

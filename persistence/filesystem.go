@@ -15,7 +15,7 @@ import (
 const directory = "/tmp/cache-fsdb"
 
 type FsPersister struct {
-	// TODO: Add TTL
+	// TODO: Add Custom TTL
 }
 
 var ErrKeyNotFound = errors.New("Key not found")
