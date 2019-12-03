@@ -24,8 +24,8 @@ func getFilepath(key []byte) string {
 	return filepath.Join(directory, hash)
 }
 
-func (p *FsPersister) ReadInto(key []byte, target io.Writer) error {
-	path := getFilepath(key)
+func (p *FsPersister) ReadInto(key string, target io.Writer) error {
+	path := getFilepath([]byte(key))
 	file, err := os.Open(path)
 	if err != nil {
 		return ErrKeyNotFound
@@ -36,9 +36,9 @@ func (p *FsPersister) ReadInto(key []byte, target io.Writer) error {
 	return err
 }
 
-func (p *FsPersister) GetFileForKey(key []byte) (*os.File, error) {
+func (p *FsPersister) GetWriterForKey(key string) (io.WriteCloser, error) {
 	os.MkdirAll(directory, 0700)
-	return os.OpenFile(getFilepath(key), os.O_RDWR|os.O_CREATE, 0600)
+	return os.OpenFile(getFilepath([]byte(key)), os.O_RDWR|os.O_CREATE, 0600)
 }
 
 func (p *FsPersister) Wipe() error {

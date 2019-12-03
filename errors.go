@@ -9,7 +9,7 @@ type UsageError struct {
 }
 
 func NewUsageError(err error) error {
-	return UsageError{
+	return &UsageError{
 		errors.Wrap(err, "usage error"),
 	}
 }

@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	a "github.com/stretchr/testify/assert"
 
 	"github.com/szabado/cache/persistence"
 )
-
-func init() {
-	logrus.SetLevel(logrus.DebugLevel)
-}
 
 func setup(assert *a.Assertions) {
 	assert.NoError(persistence.NewFsPersister().Wipe())
@@ -55,6 +50,12 @@ func TestRunRoot(t *testing.T) {
 			} else {
 				assert.NoError(err)
 			}
+			assert.Equal(test.output, buf.String())
+
+			buf.Reset()
+			_, _, cmd, err := parseArgs(test.input)
+			assert.NoError(err)
+			persistence.NewFsPersister().ReadInto(cmd, &buf)
 			assert.Equal(test.output, buf.String())
 		})
 	}
@@ -117,7 +118,7 @@ func TestEscape(t *testing.T) {
 			assert := a.New(t)
 			setup(assert)
 
-			output := escape(test.input)
+			output := escapeAndJoin(test.input)
 			assert.Equal(test.output, output)
 		})
 	}

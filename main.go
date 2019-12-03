@@ -46,17 +46,18 @@ func main() {
 		case *exec.ExitError:
 			os.Exit(tErr.ExitCode())
 		case *UsageError:
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			fmt.Fprint(os.Stderr, usage)
 			os.Exit(1)
 		default:
 			fmt.Fprint(os.Stderr, "\n")
-			logrus.Errorf("Error: %s\n\n", err)
+			logrus.Errorf("Error: %s\n", err)
 		}
 		os.Exit(1)
 	}
 }
 
-func parseArgs(args []string) (verbose bool, clearCache bool, command []string, err error) {
+func parseArgs(args []string) (verbose bool, clearCache bool, command string, err error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -66,13 +67,13 @@ func parseArgs(args []string) (verbose bool, clearCache bool, command []string, 
 			verbose = true
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return false, false, nil, errors.Errorf("unknown flag: %s", arg)
+				return false, false, "", errors.Errorf("unknown flag: %s", arg)
 			}
-			return verbose, clearCache, args[i:], nil
+			return verbose, clearCache, escapeAndJoin(args[i:]), nil
 		}
 	}
 
-	return verbose, clearCache, nil, nil
+	return verbose, clearCache, "", nil
 }
 
 func runRoot(args []string, output io.Writer) error {
@@ -80,6 +81,7 @@ func runRoot(args []string, output io.Writer) error {
 	if err != nil {
 		return NewUsageError(err)
 	}
+
 	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
@@ -101,13 +103,8 @@ func runRoot(args []string, output io.Writer) error {
 	return runCommand(persister, command, output)
 }
 
-func runCommand(persister *persistence.FsPersister, command []string, output io.Writer) error {
-	var (
-		commandKey = []byte(strings.Join(command, " "))
-		err        error
-	)
-
-	err = persister.ReadInto(commandKey, output)
+func runCommand(persister *persistence.FsPersister, command string, output io.Writer) error {
+	err := persister.ReadInto(command, output)
 	if err != nil && err != persistence.ErrKeyNotFound {
 		logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
 	} else if err == nil {
@@ -115,22 +112,21 @@ func runCommand(persister *persistence.FsPersister, command []string, output io.
 		return nil
 	}
 
-	file, err := persister.GetFileForKey(commandKey)
+	record, err := persister.GetWriterForKey(command)
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to open file for storage")
+		logrus.WithError(err).Warn("Failed to open record for writing")
 	} else {
-		output = io.MultiWriter(output, file)
+		output = io.MultiWriter(output, record)
+		defer record.Close()
 	}
-	defer file.Close()
 
 	logrus.Debugf("Failed to find previous execution, executing command")
 	return errors.Wrapf(executeCommand(command, output), "error running command")
 }
 
-func executeCommand(command []string, target io.Writer) error {
-	escapedCommand := escape(command)
-	logrus.Infof("Executing command: %s", escapedCommand)
-	cmd := exec.Command("bash", "-c", escapedCommand)
+func executeCommand(command string, target io.Writer) error {
+	logrus.Infof("Executing command: %s", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = target
@@ -138,7 +134,7 @@ func executeCommand(command []string, target io.Writer) error {
 	return cmd.Run()
 }
 
-func escape(cmdSegments []string) string {
+func escapeAndJoin(cmdSegments []string) string {
 	var builder strings.Builder
 	for _, seg := range cmdSegments {
 		builder.WriteString(shellescape.Quote(seg))
