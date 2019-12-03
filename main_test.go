@@ -66,25 +66,25 @@ func TestParseArgs(t *testing.T) {
 		input      []string
 		verbose    bool
 		clearCache bool
-		output     []string
+		output     string
 	}{
 		{
 			input:      []string{"cache", "echo", `-e`, `test\t`},
 			verbose:    false,
 			clearCache: false,
-			output:     []string{"echo", "-e", "test\\t"},
+			output:     "echo -e 'test\\t' ",
 		},
 		{
 			input:      []string{"cache", "--clean"},
 			verbose:    false,
 			clearCache: true,
-			output:     nil,
+			output:     "",
 		},
 		{
 			input:      []string{"cache", "--verbose"},
 			verbose:    true,
 			clearCache: false,
-			output:     nil,
+			output:     "",
 		},
 	}
 
