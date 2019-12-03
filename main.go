@@ -62,7 +62,7 @@ func parseArgs(args []string) (verbose bool, clearCache bool, override bool, com
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
-		case "--clean", "--clear":
+		case "--clean", "--clear", "-c":
 			clearCache = true
 		case "--verbose", "-v":
 			verbose = true
