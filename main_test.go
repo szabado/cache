@@ -53,7 +53,7 @@ func TestRunRoot(t *testing.T) {
 			assert.Equal(test.output, buf.String())
 
 			buf.Reset()
-			_, _, cmd, err := parseArgs(test.input)
+			_, _, _, cmd, err := parseArgs(test.input)
 			assert.NoError(err)
 			persistence.NewFsPersister().ReadInto(cmd, &buf)
 			assert.Equal(test.output, buf.String())
@@ -93,7 +93,7 @@ func TestParseArgs(t *testing.T) {
 			assert := a.New(t)
 			setup(assert)
 
-			verbose, clearCache, output, err := parseArgs(test.input)
+			verbose, clearCache, _, output, err := parseArgs(test.input)
 			assert.NoError(err)
 			assert.Equal(test.verbose, verbose)
 			assert.Equal(test.clearCache, clearCache)
