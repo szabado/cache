@@ -3,7 +3,7 @@ A tool to cache command line queries.
 
 ## Speed
 
-The tool ads a very minimal amount of latency to the first call of a command (I haven't noticed it), on subsequent calls has roughly the same performance as calling cat on a file containing the data of the request.
+The tool caches the first execution of a command, on subsequent `cache` calls with the same command will fetch the cached result. The cached entry lasts an hour.
 
 ## Usage
 
