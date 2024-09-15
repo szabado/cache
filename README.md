@@ -1,25 +1,22 @@
-# cache
-A tool to cache command line queries.
+# `cache`
 
-## Speed
+A tool to cache command line queries. It caches the result of a command for 1 hour, using the command and any arguments passed in as the key.
 
-The tool caches the first execution of a command, on subsequent `cache` calls with the same command will fetch the cached result. The cached entry lasts an hour.
+## Use Case
+
+This tool is useful when building long pipelined chains of bash commands. For example, when drilling into the response from an API using `jq` it can take a few iterations to extract the nested sub-fields that you need. Querying the API every time will:
+- Be a lot slower, making it more frustrating to poke around.
+- Potentially result in getting rate limited by the API, which stops all progress in its tracks. 
+
+Prepending the command with `cache` makes iteration fast, cheap, and easy. Getting the uncached value when your pipeline is built up is as easy as removing the `cache` prefix.
+
+## Performance
+
+`cache` is blazing fast. The performance impact of caching the first response is negligible, and it matches the speed of Unix tools like `cat` when reading the cached values. 
 
 ## Usage
 
 ```
-cache: A Cache for slow shell commands.
-
-Querying log clusters or curling API endpoints can have a latency that can
-make it annoying to build up a pipe pipeline iteratively. This tool caches
-those results for you so you iterate quickly.
-
-cache runs the command for you and stores the result, and then returns the
-output to you. Any data stored has a TTL of 1 hour, and subsequent calls of
-the same command will return the stored result. cache will only store the
-results of successful commands: if your bash command has a non-zero exit
-code, then it will be uncached.
-
 Usage:
   cache [flags] [command]
 
@@ -32,5 +29,7 @@ Examples
 
   cache curl -X GET example.com
 ```
-**Note:** `cache` only caches the first command in a sequence of pipes. If you're piping the data through slow commands, it will still be slow.
+
+## Future improvements
+- Allow `cache` to be used in the middle of a chain of pipes. Currently it can only be used on the first command.
 
