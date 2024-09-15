@@ -58,7 +58,8 @@ func main() {
 	}
 }
 
-func parseArgs(args []string) (verbose bool, clearCache bool, override bool, command string, err error) {
+func parseArgs(args []string) (verbose bool, clearCache bool, overwrite bool, command string, err error) {
+argparse:
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -66,21 +67,26 @@ func parseArgs(args []string) (verbose bool, clearCache bool, override bool, com
 			clearCache = true
 		case "--verbose", "-v":
 			verbose = true
-		case "--override", "-o":
-			override = true
+		case "--overwrite", "-o":
+			overwrite = true
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return false, false, false,"", errors.Errorf("unknown flag: %s", arg)
+				return false, false, false, "", errors.Errorf("unknown flag: %s", arg)
 			}
-			return verbose, clearCache, override, escapeAndJoin(args[i:]), nil
+			command = escapeAndJoin(args[i:])
+			break argparse
 		}
 	}
 
-	return verbose, clearCache, override, "", nil
+	if clearCache || command != "" {
+		return verbose, clearCache, overwrite, command, nil
+	} else {
+		return verbose, clearCache, overwrite, command, errors.New("command not specified")
+	}
 }
 
 func runRoot(args []string, output io.Writer) error {
-	verbose, clearCache, override, command, err := parseArgs(args)
+	verbose, clearCache, overwrite, command, err := parseArgs(args)
 	if err != nil {
 		return NewUsageError(err)
 	}
@@ -103,16 +109,18 @@ func runRoot(args []string, output io.Writer) error {
 		return persister.Wipe()
 	}
 
-	return runCommand(persister, command, output, override)
+	return runCommand(persister, command, output, overwrite)
 }
 
-func runCommand(persister *persistence.FsPersister, command string, output io.Writer, override bool) error {
-	if !override {
+func runCommand(persister *persistence.FsPersister, command string, output io.Writer, overwrite bool) error {
+	if !overwrite {
 		err := persister.ReadInto(command, output)
-		if err != nil && err != persistence.ErrKeyNotFound {
-			logrus.WithError(err).Errorf("Unknown error trying to find previous execution")
+		if err == persistence.ErrKeyNotFound {
+			logrus.Debug("No cached result found")
+		} else if err != nil && err != persistence.ErrKeyNotFound {
+			logrus.WithError(err).Errorf("Unknown error fetching cached result")
 		} else if err == nil {
-			logrus.Debug("Found previous execution, exiting early")
+			logrus.Debug("Found cached result, exiting early")
 			return nil
 		}
 	}
@@ -125,16 +133,16 @@ func runCommand(persister *persistence.FsPersister, command string, output io.Wr
 		defer record.Close()
 	}
 
-	logrus.Debugf("Failed to find previous execution, executing command")
+	logrus.Debugf("Executing command")
 	return errors.Wrapf(executeCommand(command, output), "error running command")
 }
 
-func executeCommand(command string, target io.Writer) error {
+func executeCommand(command string, output io.Writer) error {
 	logrus.Infof("Executing command: %s", command)
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
-	cmd.Stdout = target
+	cmd.Stdout = output
 
 	return cmd.Run()
 }

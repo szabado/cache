@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const directory = "/tmp/cache-fsdb"
+var directory = filepath.Join(os.TempDir(), "cache-fsdb")
 
 type FsPersister struct {
 	// TODO: Add Custom TTL
