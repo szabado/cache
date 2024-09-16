@@ -34,14 +34,14 @@ Examples
 
 ### Homebrew
 1. `brew tap szabado/tools`
-2. `brew install szabado/tools/zkcli`
+2. `brew install szabado/tools/cache`
 
 ### Build from source
 
 This tool is built using [Hermit](https://github.com/cashapp/hermit), and fetches its own build tools as part of its build process. To build this from source:
 1. Download the source.
 2. Run `./bin/go build`
-3. Put the resultant `zkcli` binary in your `PATH`
+3. Put the resultant `cache` binary in your `PATH`
 
 ## Future improvements
 - Allow `cache` to be used in the middle of a chain of pipes. Currently it can only be used on the first command.
