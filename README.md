@@ -1,6 +1,6 @@
 # `cache`
 
-![](https://goreportcard.com/report/github.com/szabado/cache)
+![](https://goreportcard.com/badge/github.com/szabado/cache)
 
 A tool to cache command line queries. It caches the result of a command for 1 hour, using the command and any arguments passed in as the key.
 
